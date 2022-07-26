@@ -1,0 +1,187 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <title>伝票入力</title>
+</head>
+<body>
+    <h1>伝票入力</h1>
+
+    <a href="/home/">ホームへ戻る</a>
+
+    <form action="/voucher_data_save/" method="post" id="voucher_data_save_form">
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>注文No</th>
+                <th>注文日</th>
+                <th>輸送方法</th>
+                <th>輸送機関</th>
+                <th>発送No</th>
+                <th>総重量</th>
+                <th>コスト</th>
+                <th>状態</th>
+            </tr>
+            <tr>
+                <td>
+                    <input type="text" id="voucherDataId" name="voucherDataId" value="" readonly>
+                </td>
+                <td>
+                    <input type="text" id="orderId" name="orderId" value="">
+                </td>
+                <td>
+                    <input type="date" id="orderTime" name="orderTime" value="">
+                </td>
+                <td>
+                    <select name="shippingMode" id="shippingMode">
+                        {{range $i, $v := .shippingModeList}}
+                        <option value={{$i}}>{{$i}}:{{$v}}</option>
+                        {{end}}
+                    </select>
+                </td>
+                <td>
+                    <select name="shippingMethod" id="shippingMethod">
+                        {{range $i, $v := .shippingMethodList}}
+                        <option value={{$i}}>{{$i}}:{{$v}}</option>
+                        {{end}}
+                    </select>
+                </td>
+                <td>
+                    <input type="text" id="deliveryId" name="deliveryId" value="">
+                </td>
+                <td>
+                    <input type="number" step="0.001" id="weight" name="weight" value="0">
+                </td>
+                <td>
+                    <input type="number" step="0.01" id="cost" name="cost" value="0">
+                </td>
+                <td>
+                    <select name="status" id="status">
+                        {{range $i, $v := .statusList}}
+                        <option value={{$i}}>{{$i}}:{{$v}}</option>
+                        {{end}}
+                    </select>
+                </td>
+                <td>
+                    <input type="submit" value="save">
+                </td>
+            </tr>
+        </table>
+    </form>
+
+    {{if .voucherDataList}}
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <th>注文No</th>
+            <th>注文日</th>
+            <th>輸送方法</th>
+            <th>輸送機関</th>
+            <th>発送No</th>
+            <th>総重量</th>
+            <th>コスト</th>
+            <th>状態</th>
+            <th>削除フラグ</th>
+            <th>編集</th>
+            <th>削除</th>
+        </tr>
+        {{range .voucherDataList}}
+        <tr>
+            <td><a href="/product_data_edit/?voucherDataId={{.VoucherDataId}}">{{.VoucherDataId}}</a></td>
+            <td>{{.OrderId}}</td>
+            <td>{{.OrderTime}}</td>
+            <td>{{.ShippingMode}}:{{.ShippingModeName}}</td>
+            <td>{{.ShippingMethod}}:{{.ShippingMethodName}}</td>
+            <td>{{.DeliveryId}}</td>
+            <td>{{.Weight}}</td>
+            <td>{{.Cost}}</td>
+            <td>{{.Status}}:{{.StatusName}}</td>
+            <td class="deleteFlag">{{.DeleteFlag}}</td>
+            <td><button type="button" class="editButton">edit</button></td>
+            <form action="" id="voucher_data_delete_form_{{.VoucherDataId}}" method="post">
+                <td><button class="deleteButton">delete</button></td>
+                <input type="hidden" name="voucherDataId" value={{.VoucherDataId}}>
+            </form>
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    <form action="/voucher_data_force_delete/" id="voucher_data_force_delete_form" method="post">
+        <input type="hidden" name="voucherDataId" value="">
+    </form>
+
+    <script>
+        // 画面がロードされた時
+        $(function(){
+            var deleteFlags = $(".deleteFlag");
+            for(var i = 0; i < deleteFlags.length; i++){
+                var flag = deleteFlags[i].innerText;
+                if(flag == "true"){
+                    $(deleteFlags[i]).parent('tr').hide();// jqueryでは$()をつけないと正常に動かない。ハマった！
+                }
+            }
+        });
+
+        $(".editButton").on("click", function(){
+            var rowData = $(this).closest('tr').children("td");
+            var voucherDataId = rowData[0].innerText;
+            var orderId = rowData[1].innerText;
+            var orderTime = rowData[2].innerText;
+            var shippingMode = rowData[3].innerText;
+            var shippingMethod = rowData[4].innerText;
+            var deliveryId = rowData[5].innerText;
+            var weight = rowData[6].innerText;
+            var cost = rowData[7].innerText;
+            var status = rowData[8].innerText;
+
+            $("#voucher_data_save_form #voucherDataId").val(voucherDataId);
+            $("#voucher_data_save_form #orderId").val(orderId == "-" ? "" : orderId);
+            $("#voucher_data_save_form #orderTime").val(orderTime);
+            $("#voucher_data_save_form #shippingMode").val(shippingMode.split(":")[0]);
+            $("#voucher_data_save_form #shippingMethod").val(shippingMethod.split(":")[0]);
+            $("#voucher_data_save_form #deliveryId").val(deliveryId == "-" ? "" : deliveryId);
+            $("#voucher_data_save_form #weight").val(weight);
+            $("#voucher_data_save_form #cost").val(cost);
+            $("#voucher_data_save_form #status").val(status.split(":")[0]);
+        });
+
+        $(".deleteButton").on("click", function(){
+            var rowData = $(this).closest('tr').children("td");
+            var voucherDataId = rowData[0].innerText;
+
+            $.ajax("/voucher_data_delete/",{
+                type: 'post',
+                data: $("#voucher_data_delete_form_"+ voucherDataId).serialize(),
+                dataType: 'json'
+            }).done(function(jsonData){
+                var data = $.parseJSON(jsonData);
+                if(data.hasProductData){
+                    var ok = confirm("登録済み商品データがあります。\r\n削除していいですか？");
+                    if(ok){
+                        $('#voucher_data_force_delete_form input[name="voucherDataId"]').val(voucherDataId);
+                        $('#voucher_data_force_delete_form').submit();
+                    }
+                }
+            }).fail(function(jqXHR, textStatus, errorThrown){
+                console.log("ajax通信に失敗しました");
+                console.log("jqXHR          : " + jqXHR.status); // HTTPステータスが取得
+                console.log("textStatus     : " + textStatus);    // タイムアウト、パースエラー
+                console.log("errorThrown    : " + errorThrown.message); // 例外情報
+                console.log("URL            : " + url);
+            });
+        });
+
+        // readOnlyのinputをグレーアウト
+        var inputs = $("input");
+        for (var i = 0; i < inputs.length; i++){
+            if(inputs[i].readOnly){
+                inputs[i].style.backgroundColor = "#e9e9e9";
+                inputs[i].tabIndex = "-1";
+                inputs[i].style.cursor = "not-allowed";
+            }
+        }
+    </script>
+</body>
+</html>

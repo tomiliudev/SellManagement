@@ -1,0 +1,134 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <title>商品マスター入力</title>
+</head>
+<body>
+    <h1>商品マスター入力</h1>
+
+    <a href="/home/">ホームへ戻る</a>
+
+    <form action="/product_mst_save/" method="post" id="product_mst_save_form">
+        <input type="hidden" name="productMstId" id="productMstId" value="{{.ProductMstId}}">
+        <table>
+            <tr>
+                <th>商品名</th>
+                <th>重量</th>
+                <th>価格</th>
+                <th>日本送料</th>
+                <th>商品URL</th>
+                <th>保存</th>
+            </tr>
+            <tr>
+                <td>
+                    <input type="text" id="name" name="name" required size="10" value="">
+                </td>
+                <td>
+                    <input type="number" step="0.001" id="weight" name="weight" required  size="10" min="0.01" value="">
+                </td>
+                <td>
+                    <input type="number" step="0.01" id="price" name="price" required  size="10" min="0.01" value="">
+                </td>
+                <td>
+                    <input type="number" step="0.01" id="postageJapan" name="postageJapan" required  size="10" min="0.01" value="">
+                </td>
+                <td>
+                    <input type="text" id="prodUrl" name="prodUrl" size="10" value="">
+                </td>
+                <td>
+                    <input type="submit" value="save">
+                </td>
+            </tr>
+        </table>
+    </form>
+
+    {{if .productMstList}}
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <th>商品名</th>
+            <th>重量</th>
+            <th>価格</th>
+            <th>日本送料</th>
+            <th style="display: none;">削除フラグ</th>
+            <th>編集</th>
+            <th>削除</th>
+        </tr>
+        {{range .productMstList}}
+        <tr>
+            <td>{{.ProductMstId}}</td>
+            <td><a id="prodUrl" href="{{.ProdUrl}}" target="_blank">{{.Name}}</a></td>
+            <td>{{.Weight}}</td>
+            <td>{{.Price}}</td>
+            <td>{{.PostageJapan}}</td>
+            <td style="display: none;" class="deleteFlag">{{.DeleteFlag}}</td>
+            <td><button type="button" class="editButton">edit</button></td>
+            {{if .DeleteFlag}}
+            <td><button class="revivalButton">復活</button></td>
+            {{else}}
+            <td><button class="deleteButton">delete</button></td>
+            {{end}}
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    <form id="product_mst_delete_form" action="" method="post">
+        <input type="hidden" name="productMstId" value="">
+    </form>
+
+    <form id="product_mst_revival_form" action="" method="post">
+        <input type="hidden" name="productMstId" value="">
+    </form>
+
+    <script>
+        $(function(){
+            var deleteFlags = $(".deleteFlag");
+            for(var i = 0; i < deleteFlags.length; i++){
+                if(deleteFlags[i].innerText == "true"){
+                    $(deleteFlags[i]).parent('tr').css({'background-color':'dimgray', 'color':'white'});
+                }
+            }
+        });
+
+        $(".editButton").on("click", function(){
+            var rowData = $(this).closest('tr').children("td");
+            var productMstId = rowData[0].innerText;
+            var name = rowData[1].innerText;
+            var weight = rowData[2].innerText;
+            var price = rowData[3].innerText;
+            var postageJapan = rowData[4].innerText;
+            var prodUrl = $(rowData[1]).find("a").attr('href');
+            $("#product_mst_save_form #productMstId").val(productMstId);
+            $("#product_mst_save_form #name").val(name);
+            $("#product_mst_save_form #weight").val(weight);
+            $("#product_mst_save_form #price").val(price);
+            $("#product_mst_save_form #postageJapan").val(postageJapan);
+            $("#product_mst_save_form #prodUrl").val(prodUrl);
+        });
+
+        $(".deleteButton").on("click", function(){
+            var ok = confirm("削除してもいいですか？");
+            if(ok){
+                var rowData = $(this).closest('tr').children("td");
+                var productMstId = rowData[0].innerText;
+                $('#product_mst_delete_form input[name=productMstId]').val(productMstId);
+                var form = $('#product_mst_delete_form');
+                form.attr("action", "/product_mst_delete/");
+                form.submit();
+            }
+        });
+
+        $(".revivalButton").on("click", function(){
+            var rowData = $(this).closest('tr').children("td");
+            var productMstId = rowData[0].innerText;
+            $('#product_mst_revival_form input[name=productMstId]').val(productMstId);
+            var form = $('#product_mst_revival_form');
+            form.attr("action", "/product_mst_revival/");
+            form.submit();
+        });
+    </script>
+</body>
+</html>

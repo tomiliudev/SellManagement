@@ -1,0 +1,280 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>商品データ入力</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <input type="hidden" id="configData" 
+        grossProfitMargin={{.configData.GrossProfitMargin}} 
+        currency={{.configData.Currency}}
+    >
+
+    <h1>商品データ入力</h1>
+
+    <ul>
+        <li><a href="/home/">ホームへ戻る</a></li>
+        <li><a href="/voucher_data_edit/">伝票入力へ戻る</a></li>
+    </ul>
+    
+    <table border="1">
+        <thead>
+            <tr>
+                <th>粗利率</th>
+                <th>通貨コード</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    <form id="updateGrossProfitMarginForm" action="/update_gross_profit_margin/" method="post">
+                        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
+                        <input type="number" name="grossProfitMargin" id="grossProfitMargin">
+                    </form>
+                </td>
+                <td>
+                    <form id="updateCurrencyForm" action="/update_currency/" method="post">
+                        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
+                        <select name="currency" id="currency">
+                            <option value="CNY">CNY:元</option>
+                            <option value="JPY">JPY:円</option>
+                        </select>
+                    </form>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <table border="1" id="voucherDataTable">
+        <tr>
+            <th>id</th>
+            <th>注文No</th>
+            <th>注文日</th>
+            <th>輸送方法</th>
+            <th>輸送機関</th>
+            <th>発送No</th>
+            <th>総重量</th>
+            <th>コスト</th>
+            <th>状態</th>
+        </tr>
+        <tr>
+            <td>{{.voucherData.VoucherDataId}}</td>
+            <td>{{.voucherData.OrderId}}</td>
+            <td>{{.voucherData.OrderTime}}</td>
+            <td>{{.voucherData.ShippingMode}}:{{.voucherData.ShippingModeName}}</td>
+            <td>{{.voucherData.ShippingMethod}}:{{.voucherData.ShippingMethodName}}</td>
+            <td>{{.voucherData.DeliveryId}}</td>
+            <td>{{.voucherData.Weight}}</td>
+            <td>{{.voucherData.Cost}}</td>
+            <td>{{.voucherData.Status}}:{{.voucherData.StatusName}}</td>
+        </tr>
+    </table>
+
+    <form id="product_data_save_form" action="/product_data_save/" method="post">
+        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
+        <input type="hidden" id="productDataId" name="productDataId" value="{{.ProductDataId}}">
+        <input type="hidden" id="productMstId" name="productMstId" value=0>
+        <input type="hidden" id="productMstList" name="productMstList" value={{.productMstList}}>
+        <table>
+            <tr>
+                <th>商品名</th>
+                <th>数</th>
+                <th>総重量</th>
+                <th>総価格</th>
+                <th>送料（中国）</th>
+                <th>粗利率</th>
+                <th>save</th>
+            </tr>
+            <tr>
+                <td>
+                    <select name="name" id="name" required>
+                        <option value="">---</option>
+                        {{range .productMstList}}
+                        <option value={{.ProductMstId}}>
+                            {{.ProductMstId}} : {{.Name}}
+                        </option>
+                        {{end}}
+                    </select>
+                </td>
+                <td>
+                    <input type="number" id="count" name="count" required min="1" value={{if.Count}}{{.Count}}{{else}}1{{end}}>
+                </td>
+                <td>
+                    <input type="number" step="0.001" id="weight" name="weight" required min="0.01" value={{if.Weight}}{{.Weight}}{{else}}0{{end}}>
+                </td>
+                <td>
+                    <input type="number" step="0.01" id="price" name="price" required min="0.01" value={{if.Price}}{{.Price}}{{else}}0{{end}}>
+                </td>
+                <td>
+                    <input type="number" step="0.01" id="postageChina" name="postageChina" value={{if.PostageChina}}{{.PostageChina}}{{else}}0{{end}}>
+                </td>
+                <td>
+                    <input type="number" id="grossProfitMargin" name="grossProfitMargin" value={{if.GrossProfitMargin}}{{.GrossProfitMargin}}{{else}}0{{end}}>
+                </td>
+                <td>
+                    <input type="submit" value="save">
+                </td>
+            </tr>
+        </table>
+    </form>
+
+    <form id="product_data_view_form" method="post">
+        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
+        {{if .productDataList}}
+        <table id="product_data_table" border="1">
+            <tr>
+                <th>id</th>
+                <th>商品名</th>
+                <th>数</th>
+                <th>総重量</th>
+                <th>総価格</th>
+                <th>送料（中国）</th>
+                <th>送料（日本）</th>
+                <th>粗利率</th>
+                <th>販売価格</th>
+                <th>編集</th>
+                <th>削除</th>
+                <th style="display: none;">マスター削除フラグ</th>
+            </tr>
+            {{range .productDataList}}
+            <tr>
+                <td><input type="hidden" name="productDataId" value={{.ProductDataId}}>{{.ProductDataId}}</td>
+                <td><a href="{{.ProdUrl}}" target="_blank">{{.ProductMstId}}:{{.Name}}</a></td>
+                <td>{{.Count}}</td>
+                <td>{{.Weight}}</td>
+                <td>{{.Price}}</td>
+                <td>{{.PostageChina}}</td>
+                <td>{{.PostageJapan}}</td>
+                <td>{{.GrossProfitMargin}}</td>
+                <td>{{.SellingPrice}}</td>
+                <td><button type="button" class="editButton">edit</button></td>
+                <td><button type="button" class="deleteButton">delete</button></td>
+                <td style="display: none;" class="prodMstDeleteFlag">{{.ProdMstDeleteFlag}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+    </form>
+
+    <script>
+        // 画面がロードされた時
+        $(function(){
+            var config = $("#configData");
+            $("#updateGrossProfitMarginForm #grossProfitMargin").val(config.attr("grossProfitMargin"));
+            $("#currency").val(config.attr("currency"));
+
+            var prodMstDeleteFlags = $(".prodMstDeleteFlag");
+            for(var i = 0; i < prodMstDeleteFlags.length; i++){
+                if(prodMstDeleteFlags[i].innerText == "true"){
+                    $(prodMstDeleteFlags[i]).parent('tr').css({'background-color':'dimgray', 'color':'white'});
+                }
+            }
+        });
+
+        $(".editButton").on("click", function(){
+            var rowData = $(this).closest('tr').children("td");
+            var productDataId = rowData[0].innerText;
+            var productMstId = rowData[1].innerText;
+            var count = rowData[2].innerText;
+            var weight = rowData[3].innerText;
+            var price = rowData[4].innerText;
+            var postageChina = rowData[5].innerText;
+            var postageJapan = rowData[6].innerText;
+            var grossProfitMargin = rowData[7].innerText;
+
+            productMstId = productMstId.split(":")[0];
+            // productMstId = productMstId.match(/[0-9]*/); // これでもできる
+            // productMstId = productMstId.match(/.*?(?=:)/); // これでもできる
+
+            $("#product_data_save_form #productDataId").val(productDataId);
+            $("#product_data_save_form #productMstId").val(productMstId);
+            $("#product_data_save_form #name").val(productMstId);
+            $("#product_data_save_form #count").val(count);
+            $("#product_data_save_form #weight").val(weight);
+            $("#product_data_save_form #price").val(price);
+            $("#product_data_save_form #postageChina").val(postageChina);
+            $("#product_data_save_form #postageJapan").val(postageJapan);
+            $("#product_data_save_form #grossProfitMargin").val(grossProfitMargin);
+        });
+
+        $(".deleteButton").on("click", function(){
+            var form = $("#product_data_view_form");
+            form.attr("action", "/product_data_delete/");
+            var rowData = $(this).closest('tr').children("td");
+            var productDataId = rowData[0].innerText;
+            $("#product_data_view_form input[name=productDataId]").val(productDataId);
+            form.submit();
+        });
+
+        $('#name').change(function() {
+            var product = getSelectedProduct();
+            if(!product) return;
+
+            $('#productMstId').val(product[0]);
+            refreshWeight(product);
+            refreshPrice(product);
+            refreshProdUrl(product);
+        });
+
+        $('#count').change(function() {
+            var product = getSelectedProduct();
+            if(!product) return;
+
+            refreshWeight(product);
+            refreshPrice(product);
+        });
+
+        function refreshWeight (product){
+            var weight = product[2];
+            var count = $('#count').val();
+            $('#weight').val(weight * count);// 総重量
+        }
+
+        function refreshPrice (product){
+            var price = product[3];
+            var count = $('#count').val();
+            $('#price').val(price * count);// 総価格
+        }
+
+        function refreshProdUrl (product){
+            var prodUrl = product[4];
+            $('#prodUrl').val(prodUrl);
+        }
+
+        // 選択中の商品マスターの返却
+        function getSelectedProduct(){
+            var productMstId = $('#name').val();
+            var productMstList = $('#productMstList').val();
+
+            /*
+            https://www.javadrive.jp/regex-basic/writing/index2.html
+            正規表現の肯定先読み、肯定後読みについての解説
+            {}に囲まれる部分だけヒットして取り出す
+            (?<=パターン).*?(?=パターン)
+            */
+            productMstList = productMstList.match(/(?<={).*?(?=})/g);
+            var product = [];
+            $.each(productMstList, function(index, _product){
+                product = _product.split(" ");
+                if(product[0] == productMstId){
+                    return false;// $.eachでbreakしたい場合はreturn false
+                }
+            });
+
+            return product;
+        }
+
+        // 粗利率の選択（更新）
+        $("#updateGrossProfitMarginForm #grossProfitMargin").change(function(){
+            $("#updateGrossProfitMarginForm").submit();
+        });
+
+        // 通貨コードの選択（更新）
+        $("#currency").change(function(){
+            $("#updateCurrencyForm").submit();
+        });
+    </script>
+
+</body>
+</html>
