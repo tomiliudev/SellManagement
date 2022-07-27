@@ -1,0 +1,67 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>商品詳細入力</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <h1>商品詳細入力</h1>
+
+    <ul>
+        <li><a href="/home/">ホームへ戻る</a></li>
+        <li><a href="/product_data_edit/?voucherDataId={{.voucherData.VoucherDataId}}">商品データ入力へ</a></li>
+    </ul>
+
+    <form id="product_data_view_form" method="post">
+        {{if .productDetailDataList}}
+        <table border="1">
+            <tr>
+                <th>id</th>
+                <th style="display: none;">productDataId</th>
+                <th>商品名</th>
+                <th>粗利率</th>
+                <th>販売価格</th>
+                <th>削除</th>
+            </tr>
+            {{range .productDetailDataList}}
+            <tr>
+                <td>{{.ProductDetailDataId}}</td>
+                <td style="display: none;">{{.ProductDataId}}</td>
+                <td><a href="{{.ProdUrl}}" target="_blank">{{.ProductMstId}}:{{.Name}}</a></td>
+                <td><input class="grossProfitMargin" type="number" value="{{.GrossProfitMargin}}"></td>
+                <td>{{.SellingPrice}}</td>
+                <td><button type="button" class="deleteButton">delete</button></td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+    </form>
+
+    <form action="" method="post" id="update_grossProfitMargin_form">
+        <input type="hidden" name="productDetailDataId" value="">
+        <input type="hidden" name="productDataId" value="">
+        <input type="hidden" name="grossProfitMargin" value="">
+    </form>
+
+    <script>
+        var grossProfitMargin ;
+        var grossProfitMarginClass = $(".grossProfitMargin");
+        grossProfitMarginClass.focus(function(){
+            grossProfitMargin = $(this).val();
+        }).blur(function(){
+            if(grossProfitMargin != $(this).val()){
+                $('#update_grossProfitMargin_form').attr('action', '/product_detail_data_update/');
+                var rowData = $(this).closest('tr').children('td');
+                var productDetailDataId = rowData[0].innerText;
+                var productDataId = rowData[1].innerText;
+                $('#update_grossProfitMargin_form input[name=productDetailDataId]').val(productDetailDataId);
+                $('#update_grossProfitMargin_form input[name=productDataId]').val(productDataId);
+                $('#update_grossProfitMargin_form input[name=grossProfitMargin]').val($(this).val());
+                $('#update_grossProfitMargin_form').submit();
+            }
+        });
+    </script>
+
+</body>
+</html>

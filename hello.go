@@ -94,6 +94,26 @@ type ProductData2 struct {
 	ProdMstDeleteFlag bool
 }
 
+type ProductDetailData struct {
+	ProductDetailDataId int
+	ProductDataId       int
+	GrossProfitMargin   float64
+	PurchaseDate        string
+	SalesDate           string
+}
+
+type ProductDetailData2 struct {
+	ProductDetailDataId int
+	ProductDataId       int
+	GrossProfitMargin   float64
+	PurchaseDate        string
+	SalesDate           string
+	ProductMstId        int
+	Name                string
+	SellingPrice        float64
+	ProdUrl             string
+}
+
 type ConfigData struct {
 	DataId            int
 	GrossProfitMargin float64
@@ -132,6 +152,10 @@ func main() {
 	http.HandleFunc("/product_data_save/", productDataSaveHandler)
 	http.HandleFunc("/product_data_delete/", productDataDeleteHandler)
 
+	http.HandleFunc("/product_detail_data_edit/", productDetailDataEditHandler)
+	http.HandleFunc("/product_detail_data_update/", productDetailDataUpdateHandler)
+
+	http.HandleFunc("/config_edit/", configEditHandler)
 	http.HandleFunc("/update_gross_profit_margin/", updateGrossProfitMarginHandler)
 	http.HandleFunc("/update_currency/", updateCurrencyHandler)
 
@@ -491,26 +515,13 @@ func productDataEditHandler(w http.ResponseWriter, r *http.Request) {
 		pDataList = append(pDataList, pData)
 	}
 
-	// configData取得
-	configData := getConfigData()
-
 	// 伝票データ取得
-	voucherData := getVoucherDataById(voucherDataId)
-	voucherDataByte, err := json.Marshal(voucherData)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	var voucherData2 VoucherData2
-	err = json.Unmarshal(voucherDataByte, &voucherData2)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	voucherData2 := getVoucherData2ById(voucherDataId)
 
 	data := make(map[string]interface{})
 	data["voucherData"] = voucherData2
 	data["productMstList"], _ = loadProductMsts()
 	data["productDataList"] = pDataList
-	data["configData"] = configData
 
 	t, _ := template.ParseFiles("product_data_edit.html")
 	t.Execute(w, data)
@@ -522,6 +533,20 @@ func getVoucherDataById(voucherDataId int) VoucherData {
 		return i.(VoucherData).VoucherDataId == voucherDataId
 	})
 	return voucherData.(VoucherData)
+}
+
+func getVoucherData2ById(voucherDataId int) VoucherData2 {
+	voucherData := getVoucherDataById(voucherDataId)
+	voucherDataByte, err := json.Marshal(voucherData)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var voucherData2 VoucherData2
+	err = json.Unmarshal(voucherDataByte, &voucherData2)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return voucherData2
 }
 
 func (p *ProductData2) UnmarshalJSON(b []byte) error {
@@ -629,16 +654,15 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 	defer DbConnection.Close()
 
 	voucherDataId := r.FormValue("voucherDataId")
-	productDataId := r.FormValue("productDataId")
+	productDataId, _ := strconv.Atoi(r.FormValue("productDataId"))
 	productMstId := r.FormValue("productMstId")
-	count := r.FormValue("count")
+	count, _ := strconv.Atoi(r.FormValue("count"))
 	weight := r.FormValue("weight")
 	price := r.FormValue("price")
 	postageChina := r.FormValue("postageChina")
 	grossProfitMargin := r.FormValue("grossProfitMargin")
 
-	_productDataId, _ := strconv.Atoi(productDataId)
-	if _productDataId > 0 {
+	if productDataId > 0 {
 		cmd := `update productData 
 		set productMstId = ?, count = ?, weight = ?, price = ?, 
 		postageChina = ?, grossProfitMargin = ?
@@ -646,15 +670,34 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 		_, err := DbConnection.Exec(cmd,
 			productMstId, count, weight, price,
 			postageChina, grossProfitMargin,
-			_productDataId)
+			productDataId)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		cmd = `update productDetailData set grossProfitMargin = ? where productDataId = ?`
+		_, err = DbConnection.Exec(cmd, grossProfitMargin, productDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
 		cmd := `insert into productData (productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId) values (?, ?, ?, ?, ?, ?, ?)`
-		_, err := DbConnection.Exec(cmd, productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId)
+		res, err := DbConnection.Exec(cmd, productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId)
 		if err != nil {
 			log.Fatalln(err)
+		}
+
+		if lastId, err := res.LastInsertId(); err != nil {
+			log.Fatalln(err)
+		} else {
+			// 詳細データ
+			for i := 0; i < count; i++ {
+				cmd := `insert into productDetailData (productDataId, grossProfitMargin) values (?, ?)`
+				_, err := DbConnection.Exec(cmd, lastId, grossProfitMargin)
+				if err != nil {
+					log.Fatalln(err)
+				}
+			}
 		}
 	}
 	http.Redirect(w, r, "/product_data_edit/?voucherDataId="+voucherDataId, http.StatusFound)
@@ -673,12 +716,160 @@ func productDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Fatalln(err)
 		}
+
+		cmd = `delete from productDetailData where productDataId = ?`
+		_, err = DbConnection.Exec(cmd, _productDataId)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 	http.Redirect(w, r, "/product_data_edit/?voucherDataId="+voucherDataId, http.StatusFound)
 }
 
+func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
+	productDataId, _ := strconv.Atoi(r.FormValue("productDataId"))
+
+	// productDataの取得
+	productDataList, _ := loadProductDatas()
+	productData := linq.From(productDataList).FirstWith(func(i interface{}) bool {
+		return i.(ProductData).ProductDataId == productDataId
+	}).(ProductData)
+
+	// productMstの取得
+	productMst := getProductMstById(productData.ProductMstId)
+
+	// productDetailDataの取得
+	details := getProductDetailDataByProductDataId(productDataId)
+
+	var details2 []ProductDetailData2
+	for _, v := range details {
+		detail := ProductDetailData2{
+			ProductDetailDataId: v.ProductDetailDataId,
+			ProductDataId:       v.ProductDataId,
+			GrossProfitMargin:   v.GrossProfitMargin,
+			PurchaseDate:        v.PurchaseDate,
+			SalesDate:           v.SalesDate,
+			ProductMstId:        productMst.ProductMstId,
+			Name:                productMst.Name,
+			SellingPrice:        getSellingPrice(v, productData, productMst),
+			ProdUrl:             productMst.ProdUrl,
+		}
+		details2 = append(details2, detail)
+	}
+
+	voucherData2 := getVoucherData2ById(productData.VoucherDataId)
+
+	data := make(map[string]interface{})
+	data["voucherData"] = voucherData2
+	data["productDetailDataList"] = details2
+
+	t, _ := template.ParseFiles("product_detail_data_edit.html")
+	t.Execute(w, data)
+}
+
+func productDetailDataUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	productDetailDataId, _ := strconv.Atoi(r.FormValue("productDetailDataId"))
+	productDataId := r.FormValue("productDataId")
+	grossProfitMargin := r.FormValue("grossProfitMargin")
+
+	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
+	defer DbConnection.Close()
+	cmd := `update productDetailData set grossProfitMargin = ? where productDetailDataId = ?`
+	_, err := DbConnection.Exec(cmd, grossProfitMargin, productDetailDataId)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	http.Redirect(w, r, "/product_detail_data_edit/?productDataId="+productDataId, http.StatusFound)
+}
+
+// 販売価格の計算
+func getSellingPrice(pDetail ProductDetailData, pData ProductData, pMst ProductMst) float64 {
+	// configData取得
+	configData := getConfigData()
+
+	// 粗利率
+	var grossProfitMargin float64
+	if pDetail.GrossProfitMargin > 0 {
+		grossProfitMargin = pDetail.GrossProfitMargin
+	} else if pData.GrossProfitMargin > 0 {
+		grossProfitMargin = pData.GrossProfitMargin
+	} else {
+		grossProfitMargin = configData.GrossProfitMargin
+	}
+
+	eRateDataList := getExchangeRateFromDb()
+	eRateData := linq.From(eRateDataList).FirstWithT(
+		func(d ExchangeRateData) bool {
+			return d.Symbol == configData.Currency
+		},
+	)
+
+	// 販売価格（元）
+	var sellingPrice = pMst.Price / (1 - grossProfitMargin/100)
+
+	// 中国送料（元）
+	var postageChina = pData.PostageChina / float64(pData.Count)
+
+	// 日本送料（円）
+	postageJapan := pMst.PostageJapan
+
+	voucherData := getVoucherDataById(pData.VoucherDataId)
+
+	// 国際送料
+	postageInternational := 0.0
+	if voucherData.Weight > 0 && voucherData.Cost > 0 {
+		postageInternational = pMst.Weight / voucherData.Weight * float64(voucherData.Cost)
+	}
+
+	if configData.Currency == "JPY" {
+		// 円表示
+		sellingPrice *= eRateData.(ExchangeRateData).Rate
+		postageChina *= eRateData.(ExchangeRateData).Rate
+		postageInternational *= eRateData.(ExchangeRateData).Rate
+	} else {
+		// 元表示
+		postageJapan *= eRateData.(ExchangeRateData).Rate
+		postageJapan, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", postageJapan), 64)
+	}
+
+	// 一個当たりの販売価格 = 原価 / 原価率 + 中国送料（1個あたり）+ 日本送料 + 国際送料（商品ごと）+ 販売手数料（10%）
+	sellingPrice = sellingPrice + postageChina + postageJapan + postageInternational
+	sellingPrice += sellingPrice * 0.1
+
+	sellingPrice, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", sellingPrice), 64)
+	return sellingPrice
+}
+
+func getProductDetailDataByProductDataId(productDataId int) []ProductDetailData {
+	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
+	defer DbConnection.Close()
+
+	cmd := `select * from productDetailData where productDataId = ?`
+	rows, _ := DbConnection.Query(cmd, productDataId)
+	defer rows.Close()
+	var details []ProductDetailData
+	for rows.Next() {
+		var d ProductDetailData
+		if err := rows.Scan(&d.ProductDetailDataId, &d.ProductDataId, &d.GrossProfitMargin, &d.PurchaseDate, &d.SalesDate); err != nil {
+			log.Fatalln(err)
+		}
+		details = append(details, d)
+	}
+	err := rows.Err()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return details
+}
+
+func configEditHandler(w http.ResponseWriter, r *http.Request) {
+	data := make(map[string]interface{})
+	data["configData"] = getConfigData()
+	t, _ := template.ParseFiles("config_edit.html")
+	t.Execute(w, data)
+}
+
 func updateGrossProfitMarginHandler(w http.ResponseWriter, r *http.Request) {
-	voucherDataId := r.FormValue("voucherDataId")
 	grossProfitMargin := r.FormValue("grossProfitMargin")
 	_grossProfitMargin, _ := strconv.Atoi(grossProfitMargin)
 	if _grossProfitMargin > 0 {
@@ -690,11 +881,10 @@ func updateGrossProfitMarginHandler(w http.ResponseWriter, r *http.Request) {
 			log.Fatalln(err)
 		}
 	}
-	http.Redirect(w, r, "/product_data_edit/?voucherDataId="+voucherDataId, http.StatusFound)
+	http.Redirect(w, r, "/config_edit/", http.StatusFound)
 }
 
 func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
-	voucherDataId := r.FormValue("voucherDataId")
 	currency := r.FormValue("currency")
 	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
 	defer DbConnection.Close()
@@ -703,7 +893,7 @@ func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	http.Redirect(w, r, "/product_data_edit/?voucherDataId="+voucherDataId, http.StatusFound)
+	http.Redirect(w, r, "/config_edit/", http.StatusFound)
 }
 
 func loadProductDatas() ([]ProductData, error) {
@@ -758,4 +948,21 @@ func getConfigData() ConfigData {
 		log.Fatalln(err)
 	}
 	return configData
+}
+
+func getProductMstById(productMstId int) ProductMst {
+	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
+	defer DbConnection.Close()
+
+	var productMst ProductMst
+	cmd := `select * from productMst where productMstId = ?`
+	row := DbConnection.QueryRow(cmd, productMstId)
+	err := row.Scan(
+		&productMst.ProductMstId, &productMst.Name, &productMst.Weight,
+		&productMst.Price, &productMst.ProdUrl, &productMst.PostageJapan,
+		&productMst.DeleteFlag)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return productMst
 }

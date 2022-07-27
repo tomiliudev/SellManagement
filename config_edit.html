@@ -1,0 +1,65 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>コンフィグ</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <input type="hidden" id="configData" 
+        grossProfitMargin={{.configData.GrossProfitMargin}} 
+        currency={{.configData.Currency}}
+    >
+
+    <h1>コンフィグ</h1>
+
+    <ul>
+        <li><a href="/home/">ホームへ戻る</a></li>
+    </ul>
+
+    <table border="1">
+        <thead>
+            <tr>
+                <th>粗利率</th>
+                <th>通貨コード</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    <form id="updateGrossProfitMarginForm" action="/update_gross_profit_margin/" method="post">
+                        <input type="number" name="grossProfitMargin" id="grossProfitMargin">
+                    </form>
+                </td>
+                <td>
+                    <form id="updateCurrencyForm" action="/update_currency/" method="post">
+                        <select name="currency" id="currency">
+                            <option value="CNY">CNY:元</option>
+                            <option value="JPY">JPY:円</option>
+                        </select>
+                    </form>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        $(function(){
+            var config = $("#configData");
+            $("#updateGrossProfitMarginForm #grossProfitMargin").val(config.attr("grossProfitMargin"));
+            $("#currency").val(config.attr("currency"));
+        });
+
+        // 粗利率の選択（更新）
+        $("#updateGrossProfitMarginForm #grossProfitMargin").change(function(){
+            $("#updateGrossProfitMarginForm").submit();
+        });
+
+        // 通貨コードの選択（更新）
+        $("#currency").change(function(){
+            $("#updateCurrencyForm").submit();
+        });
+    </script>
+
+</body>
+</html>

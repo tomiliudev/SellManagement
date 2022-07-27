@@ -6,10 +6,6 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 </head>
 <body>
-    <input type="hidden" id="configData" 
-        grossProfitMargin={{.configData.GrossProfitMargin}} 
-        currency={{.configData.Currency}}
-    >
 
     <h1>商品データ入力</h1>
 
@@ -17,34 +13,6 @@
         <li><a href="/home/">ホームへ戻る</a></li>
         <li><a href="/voucher_data_edit/">伝票入力へ戻る</a></li>
     </ul>
-    
-    <table border="1">
-        <thead>
-            <tr>
-                <th>粗利率</th>
-                <th>通貨コード</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>
-                    <form id="updateGrossProfitMarginForm" action="/update_gross_profit_margin/" method="post">
-                        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
-                        <input type="number" name="grossProfitMargin" id="grossProfitMargin">
-                    </form>
-                </td>
-                <td>
-                    <form id="updateCurrencyForm" action="/update_currency/" method="post">
-                        <input type="hidden" id="voucherDataId" name="voucherDataId" value="{{.voucherData.VoucherDataId}}">
-                        <select name="currency" id="currency">
-                            <option value="CNY">CNY:元</option>
-                            <option value="JPY">JPY:円</option>
-                        </select>
-                    </form>
-                </td>
-            </tr>
-        </tbody>
-    </table>
     
     <table border="1" id="voucherDataTable">
         <tr>
@@ -139,7 +107,10 @@
             </tr>
             {{range .productDataList}}
             <tr>
-                <td><input type="hidden" name="productDataId" value={{.ProductDataId}}>{{.ProductDataId}}</td>
+                <td>
+                    <input type="hidden" name="productDataId" value={{.ProductDataId}}>
+                    <a href="/product_detail_data_edit/?productDataId={{.ProductDataId}}">{{.ProductDataId}}</a>
+                </td>
                 <td><a href="{{.ProdUrl}}" target="_blank">{{.ProductMstId}}:{{.Name}}</a></td>
                 <td>{{.Count}}</td>
                 <td>{{.Weight}}</td>
@@ -160,10 +131,6 @@
     <script>
         // 画面がロードされた時
         $(function(){
-            var config = $("#configData");
-            $("#updateGrossProfitMarginForm #grossProfitMargin").val(config.attr("grossProfitMargin"));
-            $("#currency").val(config.attr("currency"));
-
             var prodMstDeleteFlags = $(".prodMstDeleteFlag");
             for(var i = 0; i < prodMstDeleteFlags.length; i++){
                 if(prodMstDeleteFlags[i].innerText == "true"){
@@ -264,16 +231,6 @@
 
             return product;
         }
-
-        // 粗利率の選択（更新）
-        $("#updateGrossProfitMarginForm #grossProfitMargin").change(function(){
-            $("#updateGrossProfitMarginForm").submit();
-        });
-
-        // 通貨コードの選択（更新）
-        $("#currency").change(function(){
-            $("#updateCurrencyForm").submit();
-        });
     </script>
 
 </body>
