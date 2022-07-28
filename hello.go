@@ -89,7 +89,6 @@ type ProductData2 struct {
 	Price             float64
 	PostageChina      float64
 	PostageJapan      float64
-	SellingPrice      float64
 	GrossProfitMargin float64
 	ProdUrl           string
 	VoucherDataId     int
@@ -97,11 +96,11 @@ type ProductData2 struct {
 }
 
 type ProductDetailData struct {
-	ProductDetailDataId int
-	ProductDataId       int
-	GrossProfitMargin   float64
-	PurchaseDate        string
-	SalesDate           string
+	ProductDetailDataId int     `db:"productDetailDataId"`
+	ProductDataId       int     `db:"productDataId"`
+	GrossProfitMargin   float64 `db:"grossProfitMargin"`
+	PurchaseDate        string  `db:"purchaseDate"`
+	SalesDate           string  `db:"salesDate"`
 }
 
 type ProductDetailData2 struct {
@@ -114,6 +113,15 @@ type ProductDetailData2 struct {
 	Name                string
 	SellingPrice        float64
 	ProdUrl             string
+}
+
+type InventoryData struct {
+	ProductMstId  int
+	Name          string
+	ProdUrl       string
+	PurchaseCount int
+	StockCount    int
+	SoldCount     int
 }
 
 type ConfigData struct {
@@ -159,6 +167,7 @@ func main() {
 	http.HandleFunc("/product_detail_salesDate_update/", productDetailSalesDateUpdateHandler)
 
 	http.HandleFunc("/product_selling_edit/", productSellingEditHandler)
+	http.HandleFunc("/inventory_list_view/", inventoryListViewHandler)
 
 	http.HandleFunc("/config_edit/", configEditHandler)
 	http.HandleFunc("/update_gross_profit_margin/", updateGrossProfitMarginHandler)
@@ -565,7 +574,6 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 	defer DbConnection.Close()
 
 	var name string
-	var price float64
 	var prodUrl string
 	var postageJapan float64
 	var weight float64
@@ -576,13 +584,11 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		fmt.Printf("error is = %v", err)
 		name = "マスターが見つかりません！"
-		price = 0
 		prodUrl = ""
 		postageJapan = 0
 		weight = 0
 	} else {
 		name = pMst.Name
-		price = pMst.Price
 		prodUrl = pMst.ProdUrl
 		postageJapan = pMst.PostageJapan
 		weight = pMst.Weight
@@ -617,9 +623,6 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 		},
 	)
 
-	// 販売価格（元）
-	var sellingPrice = price / (1 - grossProfitMargin/100)
-
 	// 中国送料（元）
 	var postageChina = pData.PostageChina / float64(pData.Count)
 
@@ -633,7 +636,6 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 
 	if configData.Currency == "JPY" {
 		// 円表示
-		sellingPrice *= eRateData.(ExchangeRateData).Rate
 		postageChina *= eRateData.(ExchangeRateData).Rate
 		postageInternational *= eRateData.(ExchangeRateData).Rate
 	} else {
@@ -642,14 +644,6 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 		postageJapan, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", postageJapan), 64)
 	}
 	p.PostageJapan = postageJapan
-
-	// 一個当たりの販売価格 = 原価 / 原価率 + 中国送料（1個あたり）+ 日本送料 + 国際送料（商品ごと）+ 販売手数料（10%）
-	sellingPrice = sellingPrice + postageChina + postageJapan + postageInternational
-	sellingPrice += sellingPrice * 0.1
-
-	sellingPrice, _ = strconv.ParseFloat(fmt.Sprintf("%.2f", sellingPrice), 64)
-
-	p.SellingPrice = sellingPrice
 
 	return err
 }
@@ -867,6 +861,52 @@ func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, data)
 }
 
+func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
+	// productMstList取得
+	productMstList, err := loadProductMsts()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// productDataList取得
+	productDataList, err := loadProductDatas()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	productDetailDataList := loadProductDetailDatas()
+
+	var inventoryList []InventoryData
+	for _, pMst := range productMstList {
+		purchaseCount := 0
+		stockCount := 0
+		soldCount := 0
+		var pDatas []ProductData
+		linq.From(productDataList).Where(func(i interface{}) bool { return i.(ProductData).ProductMstId == pMst.ProductMstId }).ToSlice(&pDatas)
+		for _, pData := range pDatas {
+			pDetailDataQuery := linq.From(productDetailDataList).Where(func(i interface{}) bool { return i.(ProductDetailData).ProductDataId == pData.ProductDataId })
+			purchaseCount += pDetailDataQuery.Count()
+			stockCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(ProductDetailData).SalesDate == "0" }).Count()
+			soldCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(ProductDetailData).SalesDate != "0" }).Count()
+		}
+
+		inventory := InventoryData{
+			pMst.ProductMstId,
+			pMst.Name,
+			pMst.ProdUrl,
+			purchaseCount,
+			stockCount,
+			soldCount,
+		}
+		inventoryList = append(inventoryList, inventory)
+	}
+
+	data := make(map[string]interface{})
+	data["inventoryList"] = inventoryList
+	t, _ := template.ParseFiles("inventory_list_view.html")
+	t.Execute(w, data)
+}
+
 // 販売価格の計算
 func getSellingPrice(pDetail ProductDetailData, pData ProductData, pMst ProductMst) float64 {
 	// configData取得
@@ -1000,6 +1040,27 @@ func loadProductDatas() ([]ProductData, error) {
 		return nil, err
 	}
 	return products, nil
+}
+
+func loadProductDetailDatas() []ProductDetailData {
+	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
+	defer db.Close()
+	cmd := `select * from productDetailData`
+	rows, _ := db.Queryx(cmd)
+	defer rows.Close()
+	var details []ProductDetailData
+	for rows.Next() {
+		var p ProductDetailData
+		if err := rows.StructScan(&p); err != nil {
+			log.Fatalln(err)
+		}
+		details = append(details, p)
+	}
+	err := rows.Err()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return details
 }
 
 func loadProductMsts() ([]ProductMst, error) {

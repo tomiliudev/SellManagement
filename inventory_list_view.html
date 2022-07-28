@@ -1,0 +1,38 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>在庫一覧</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <h1>在庫一覧</h1>
+
+    <ul>
+        <li><a href="/home/">ホームへ戻る</a></li>
+    </ul>
+
+    {{if .inventoryList}}
+    <table border="1">
+        <tr>
+            <th>商品名</th>
+            <th>仕入数</th>
+            <th>在庫数</th>
+            <th>売却数</th>
+        </tr>
+        {{range .inventoryList}}
+        <tr>
+            <td><a href="{{.ProdUrl}}" target="_blank">{{.ProductMstId}}:{{.Name}}</a></td>
+            <td>{{.PurchaseCount}}</td>
+            <td>{{.StockCount}}</td>
+            <td>{{.SoldCount}}</td>
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    <script>
+    </script>
+
+</body>
+</html>
