@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"database/sql"
 
 	"github.com/ahmetalpbalkan/go-linq"
+	"github.com/jmoiron/sqlx"
 	"github.com/leekchan/timeutil"
 	_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/ini.v1"
@@ -57,24 +59,24 @@ type VoucherData2 struct {
 }
 
 type ProductMst struct {
-	ProductMstId int
-	Name         string
-	Weight       float64
-	Price        float64
-	ProdUrl      string
-	PostageJapan float64
-	DeleteFlag   bool
+	ProductMstId int     `db:"productMstId"`
+	Name         string  `db:"name"`
+	Weight       float64 `db:"weight"`
+	Price        float64 `db:"price"`
+	ProdUrl      string  `db:"prodUrl"`
+	PostageJapan float64 `db:"postageJapan"`
+	DeleteFlag   bool    `db:"deleteFlag"`
 }
 
 type ProductData struct {
-	ProductDataId     int
-	ProductMstId      int
-	Count             int
-	Weight            float64
-	Price             float64
-	PostageChina      float64
-	GrossProfitMargin float64
-	VoucherDataId     int
+	ProductDataId     int     `db:"productDataId"`
+	ProductMstId      int     `db:"productMstId"`
+	Count             int     `db:"count"`
+	Weight            float64 `db:"weight"`
+	Price             float64 `db:"price"`
+	PostageChina      float64 `db:"postageChina"`
+	GrossProfitMargin float64 `db:"grossProfitMargin"`
+	VoucherDataId     int     `db:"voucherDataId"`
 }
 
 // 表示用
@@ -154,6 +156,9 @@ func main() {
 
 	http.HandleFunc("/product_detail_data_edit/", productDetailDataEditHandler)
 	http.HandleFunc("/product_detail_data_update/", productDetailDataUpdateHandler)
+	http.HandleFunc("/product_detail_salesDate_update/", productDetailSalesDateUpdateHandler)
+
+	http.HandleFunc("/product_selling_edit/", productSellingEditHandler)
 
 	http.HandleFunc("/config_edit/", configEditHandler)
 	http.HandleFunc("/update_gross_profit_margin/", updateGrossProfitMarginHandler)
@@ -742,19 +747,10 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	details := getProductDetailDataByProductDataId(productDataId)
 
 	var details2 []ProductDetailData2
-	for _, v := range details {
-		detail := ProductDetailData2{
-			ProductDetailDataId: v.ProductDetailDataId,
-			ProductDataId:       v.ProductDataId,
-			GrossProfitMargin:   v.GrossProfitMargin,
-			PurchaseDate:        v.PurchaseDate,
-			SalesDate:           v.SalesDate,
-			ProductMstId:        productMst.ProductMstId,
-			Name:                productMst.Name,
-			SellingPrice:        getSellingPrice(v, productData, productMst),
-			ProdUrl:             productMst.ProdUrl,
-		}
-		details2 = append(details2, detail)
+	for _, detail := range details {
+		// productDetailData2へ変換
+		detail2 := convertToProductDetailData2(detail, productData, productMst)
+		details2 = append(details2, detail2)
 	}
 
 	voucherData2 := getVoucherData2ById(productData.VoucherDataId)
@@ -765,6 +761,21 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 
 	t, _ := template.ParseFiles("product_detail_data_edit.html")
 	t.Execute(w, data)
+}
+
+func convertToProductDetailData2(detail ProductDetailData, productData ProductData, productMst ProductMst) ProductDetailData2 {
+	detail2 := ProductDetailData2{
+		ProductDetailDataId: detail.ProductDetailDataId,
+		ProductDataId:       detail.ProductDataId,
+		GrossProfitMargin:   detail.GrossProfitMargin,
+		PurchaseDate:        detail.PurchaseDate,
+		SalesDate:           detail.SalesDate,
+		ProductMstId:        productMst.ProductMstId,
+		Name:                productMst.Name,
+		SellingPrice:        getSellingPrice(detail, productData, productMst),
+		ProdUrl:             productMst.ProdUrl,
+	}
+	return detail2
 }
 
 func productDetailDataUpdateHandler(w http.ResponseWriter, r *http.Request) {
@@ -780,6 +791,80 @@ func productDetailDataUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatalln(err)
 	}
 	http.Redirect(w, r, "/product_detail_data_edit/?productDataId="+productDataId, http.StatusFound)
+}
+
+func productDetailSalesDateUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	productDetailDataIdList := r.FormValue("productDetailDataIdList")
+	productDetailDataIds := strings.Split(productDetailDataIdList, ",")
+
+	flag := r.FormValue("flag")
+
+	_now := "0"
+	if flag == "sold" {
+		now := time.Now()
+		_now = timeutil.Strftime(&now, "%Y-%m-%d %H:%M:%S")
+	}
+
+	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
+	defer db.Close()
+	cmd := `update productDetailData set salesDate = ? where productDetailDataId in (?)`
+	query, args, err := sqlx.In(cmd, _now, productDetailDataIds)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	_, err = db.Exec(query, args...)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	http.Redirect(w, r, "/product_selling_edit/", http.StatusFound)
+}
+
+func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
+	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
+	defer DbConnection.Close()
+	cmd := `select * from productDetailData`
+	rows, _ := DbConnection.Query(cmd)
+	defer rows.Close()
+	var pDetials []ProductDetailData
+	for rows.Next() {
+		var p ProductDetailData
+		rows.Scan(&p.ProductDetailDataId, &p.ProductDataId, &p.GrossProfitMargin,
+			&p.PurchaseDate, &p.SalesDate)
+		pDetials = append(pDetials, p)
+	}
+	err := rows.Err()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	var productDataIds []int
+	linq.From(pDetials).Select(func(i interface{}) interface{} {
+		return i.(ProductDetailData).ProductDataId
+	}).Distinct().ToSlice(&productDataIds)
+
+	// 対象のproductDataList取得
+	productDataList := getProductDataListByIds(productDataIds)
+
+	var productMstIds []int
+	linq.From(productDataList).Select(func(i interface{}) interface{} {
+		return i.(ProductData).ProductMstId
+	}).Distinct().ToSlice(&productMstIds)
+
+	// 対象のproductMstList取得
+	productMstList := getProductMstListByIds(productMstIds)
+
+	var details2 []ProductDetailData2
+	for _, detail := range pDetials {
+		pData := linq.From(productDataList).FirstWith(func(i interface{}) bool { return i.(ProductData).ProductDataId == detail.ProductDataId }).(ProductData)
+		pMst := linq.From(productMstList).FirstWith(func(i interface{}) bool { return i.(ProductMst).ProductMstId == pData.ProductMstId }).(ProductMst)
+		detail2 := convertToProductDetailData2(detail, pData, pMst)
+		details2 = append(details2, detail2)
+	}
+
+	data := make(map[string]interface{})
+	data["productDetailDataList"] = details2
+	t, _ := template.ParseFiles("product_selling_edit.html")
+	t.Execute(w, data)
 }
 
 // 販売価格の計算
@@ -965,4 +1050,56 @@ func getProductMstById(productMstId int) ProductMst {
 		log.Fatalln(err)
 	}
 	return productMst
+}
+
+func getProductDataListByIds(ids []int) []ProductData {
+	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
+	defer db.Close()
+
+	query, args, err := sqlx.In(`select * from productData where productDataId in (?)`, ids)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	query = db.Rebind(query)
+	rows, err := db.Queryx(query, args...)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer rows.Close()
+
+	var pDatas []ProductData
+	for rows.Next() {
+		var p ProductData
+		if err := rows.StructScan(&p); err != nil {
+			log.Fatalln(err)
+		}
+		pDatas = append(pDatas, p)
+	}
+	return pDatas
+}
+
+func getProductMstListByIds(ids []int) []ProductMst {
+	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
+	defer db.Close()
+
+	query, args, err := sqlx.In(`select * from productMst where productMstId in (?)`, ids)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	query = db.Rebind(query)
+	rows, err := db.Queryx(query, args...)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer rows.Close()
+
+	var pMsts []ProductMst
+	for rows.Next() {
+		var p ProductMst
+		if err := rows.StructScan(&p); err != nil {
+			log.Fatalln(err)
+		}
+		pMsts = append(pMsts, p)
+	}
+	return pMsts
 }

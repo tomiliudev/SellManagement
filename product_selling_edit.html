@@ -1,0 +1,72 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>出庫処理</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <h1>出庫処理</h1>
+
+    <ul>
+        <li><a href="/home/">ホームへ戻る</a></li>
+    </ul>
+
+    <button class="soldButton">売却済み</button>
+    <button class="resetButton">リセット</button>
+
+    {{if .productDetailDataList}}
+    <table border="1">
+        <tr>
+            <th>選択</th>
+            <th>id</th>
+            <th style="display: none;">productDataId</th>
+            <th>商品名</th>
+            <th>価格</th>
+            <th>仕入日</th>
+            <th>売却日</th>
+        </tr>
+        {{range .productDetailDataList}}
+        <tr>
+            <td><input type="checkbox" name="selectRowCheckBox" value={{.ProductDetailDataId}}></td>
+            <td>{{.ProductDetailDataId}}</td>
+            <td style="display: none;">{{.ProductDataId}}</td>
+            <td><a href="{{.ProdUrl}}" target="_blank">{{.ProductMstId}}:{{.Name}}</a></td>
+            <td>{{.SellingPrice}}</td>
+            <td>{{.PurchaseDate}}</td>
+            <td>{{.SalesDate}}</td>
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    <form id="product_detail_salesDate_update_form" action="/product_detail_salesDate_update/" method="post">
+        <input type="hidden" name="productDetailDataIdList" value="">
+        <input type="hidden" name="flag" value="">
+    </form>
+
+    <script>
+        var productDetailDataIdList = [];
+        $('.soldButton').on('click', function(){
+            var checkedBoxList = $('input[name=selectRowCheckBox]:checked');
+            checkedBoxList.each(function(){
+                productDetailDataIdList.push($(this).val());
+            });
+            $('#product_detail_salesDate_update_form input[name=productDetailDataIdList]').val(productDetailDataIdList);
+            $('#product_detail_salesDate_update_form input[name=flag]').val("sold");
+            $('#product_detail_salesDate_update_form').submit();
+        });
+
+        $('.resetButton').on('click', function(){
+            var checkedBoxList = $('input[name=selectRowCheckBox]:checked');
+            checkedBoxList.each(function(){
+                productDetailDataIdList.push($(this).val());
+            });
+            $('#product_detail_salesDate_update_form input[name=productDetailDataIdList]').val(productDetailDataIdList);
+            $('#product_detail_salesDate_update_form input[name=flag]').val("reset");
+            $('#product_detail_salesDate_update_form').submit();
+        });
+    </script>
+
+</body>
+</html>
