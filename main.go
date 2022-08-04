@@ -140,6 +140,8 @@ type ExchangeRateData struct {
 
 var DbConnection *sql.DB
 
+const view_prefix string = "app/views/"
+
 func init() {
 	cfg, _ := ini.Load("config.ini")
 	cfg.MapTo(&Config)
@@ -265,7 +267,7 @@ func updateCurrentExchangeRate(date, base, symbol string, isUpdate bool) {
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("home.html")
+	t, _ := template.ParseFiles(view_prefix + "home.html")
 	t.Execute(w, nil)
 }
 
@@ -292,7 +294,7 @@ func productMstEditHandler(w http.ResponseWriter, r *http.Request) {
 	data["productMstList"], _ = loadProductMsts()
 	data["productMst"] = productMst
 
-	t, _ := template.ParseFiles("product_mst_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "product_mst_edit.html")
 	t.Execute(w, data)
 }
 
@@ -374,7 +376,7 @@ func voucherDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	data["shippingMethodList"] = Config.ShippingMethod
 	data["statusList"] = Config.Status
 	data["voucherDataList"] = vDataList
-	t, _ := template.ParseFiles("voucher_data_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "voucher_data_edit.html")
 	t.Execute(w, data)
 }
 
@@ -537,7 +539,7 @@ func productDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	data["productMstList"], _ = loadProductMsts()
 	data["productDataList"] = pDataList
 
-	t, _ := template.ParseFiles("product_data_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "product_data_edit.html")
 	t.Execute(w, data)
 }
 
@@ -753,7 +755,7 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	data["voucherData"] = voucherData2
 	data["productDetailDataList"] = details2
 
-	t, _ := template.ParseFiles("product_detail_data_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "product_detail_data_edit.html")
 	t.Execute(w, data)
 }
 
@@ -857,7 +859,7 @@ func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := make(map[string]interface{})
 	data["productDetailDataList"] = details2
-	t, _ := template.ParseFiles("product_selling_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "product_selling_edit.html")
 	t.Execute(w, data)
 }
 
@@ -903,7 +905,7 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := make(map[string]interface{})
 	data["inventoryList"] = inventoryList
-	t, _ := template.ParseFiles("inventory_list_view.html")
+	t, _ := template.ParseFiles(view_prefix + "inventory_list_view.html")
 	t.Execute(w, data)
 }
 
@@ -990,7 +992,7 @@ func getProductDetailDataByProductDataId(productDataId int) []ProductDetailData 
 func configEditHandler(w http.ResponseWriter, r *http.Request) {
 	data := make(map[string]interface{})
 	data["configData"] = getConfigData()
-	t, _ := template.ParseFiles("config_edit.html")
+	t, _ := template.ParseFiles(view_prefix + "config_edit.html")
 	t.Execute(w, data)
 }
 
