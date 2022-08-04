@@ -1,6 +1,7 @@
 package main
 
 import (
+	"SellManagement/app/models"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -12,12 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"database/sql"
-
 	"github.com/ahmetalpbalkan/go-linq"
 	"github.com/jmoiron/sqlx"
 	"github.com/leekchan/timeutil"
-	_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/ini.v1"
 )
 
@@ -138,8 +136,6 @@ type ExchangeRateData struct {
 	Rate         float64
 }
 
-var DbConnection *sql.DB
-
 const view_prefix string = "app/views/"
 
 func init() {
@@ -207,10 +203,8 @@ func checkCurrentExchangeRate() {
 func getExchangeRateFromDb() []ExchangeRateData {
 	var eRateDataList []ExchangeRateData
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 	cmd := `select * from exchangeRateData`
-	rows, _ := DbConnection.Query(cmd)
+	rows, _ := models.DbConnection.Query(cmd)
 	defer rows.Close()
 	for rows.Next() {
 		var rate ExchangeRateData
@@ -251,16 +245,14 @@ func updateCurrentExchangeRate(date, base, symbol string, isUpdate bool) {
 		fmt.Println(err)
 	}
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 	if isUpdate {
 		cmd := `update exchangeRateData set date = ?, rate = ? where base = ?`
-		if _, err := DbConnection.Exec(cmd, date, ExchangeRate.Rates[symbol], base); err != nil {
+		if _, err := models.DbConnection.Exec(cmd, date, ExchangeRate.Rates[symbol], base); err != nil {
 			log.Fatalln(err)
 		}
 	} else {
 		cmd := `insert into exchangeRateData (date, base, symbol, rate) values (?, ?, ?, ?)`
-		if _, err := DbConnection.Exec(cmd, date, base, symbol, ExchangeRate.Rates[symbol]); err != nil {
+		if _, err := models.DbConnection.Exec(cmd, date, base, symbol, ExchangeRate.Rates[symbol]); err != nil {
 			log.Fatalln(err)
 		}
 	}
@@ -274,13 +266,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 func productMstEditHandler(w http.ResponseWriter, r *http.Request) {
 	productMstId := r.FormValue("productMstId")
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
-
 	var productMst ProductMst
 	if productMstId != "" {
 		cmd := `select * from productMst where productMstId = ?`
-		row := DbConnection.QueryRow(cmd, productMstId)
+		row := models.DbConnection.QueryRow(cmd, productMstId)
 		err := row.Scan(
 			&productMst.ProductMstId, &productMst.Name, &productMst.Weight,
 			&productMst.Price, &productMst.ProdUrl, &productMst.PostageJapan,
@@ -299,8 +288,6 @@ func productMstEditHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func productMstSaveHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	productMstId := r.FormValue("productMstId")
 	name := r.FormValue("name")
@@ -312,13 +299,13 @@ func productMstSaveHandler(w http.ResponseWriter, r *http.Request) {
 	_productMstId, _ := strconv.Atoi(productMstId)
 	if _productMstId > 0 {
 		cmd := `update productMst set name = ?, weight = ?, price = ?, postageJapan = ?, prodUrl = ? where productMstId = ?`
-		_, err := DbConnection.Exec(cmd, name, weight, price, postageJapan, prodUrl, _productMstId)
+		_, err := models.DbConnection.Exec(cmd, name, weight, price, postageJapan, prodUrl, _productMstId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
 		cmd := `insert into productMst (name, weight, price, postageJapan, prodUrl, deleteFlag) values (?, ?, ?, ?, ?, ?)`
-		_, err := DbConnection.Exec(cmd, name, weight, price, postageJapan, prodUrl, false)
+		_, err := models.DbConnection.Exec(cmd, name, weight, price, postageJapan, prodUrl, false)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -328,12 +315,10 @@ func productMstSaveHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func productMstDeleteHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	productMstId := r.FormValue("productMstId")
 	cmd := `update productMst set deleteFlag = ? where productMstId = ?`
-	_, err := DbConnection.Exec(cmd, true, productMstId)
+	_, err := models.DbConnection.Exec(cmd, true, productMstId)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -341,12 +326,10 @@ func productMstDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func productMstRevivalHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	productMstId := r.FormValue("productMstId")
 	cmd := `update productMst set deleteFlag = ? where productMstId = ?`
-	_, err := DbConnection.Exec(cmd, false, productMstId)
+	_, err := models.DbConnection.Exec(cmd, false, productMstId)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -429,20 +412,18 @@ func voucherDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 		deliveryId = "-"
 	}
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 	if _voucherDataId > 0 {
 		cmd := `update voucherData 
 		set orderId = ?, orderTime = ?, shippingMode = ?, shippingMethod = ?, 
 		deliveryId = ?, weight = ?, cost = ?, status = ?
 		where voucherDataId = ?`
-		_, err := DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, voucherDataId)
+		_, err := models.DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, voucherDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
 		cmd := `insert into voucherData (orderId,orderTime,shippingMode,shippingMethod,deliveryId,weight,cost,status,deleteFlag) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err := DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, false)
+		_, err := models.DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, false)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -481,17 +462,15 @@ func voucherDataForceDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteVoucherDataById(voucherDataId int) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `update voucherData set deleteFlag = true where voucherDataId = ?`
-	DbConnection.Exec(cmd, voucherDataId)
+	models.DbConnection.Exec(cmd, voucherDataId)
 }
 
 func loadVoucherDatas() ([]VoucherData, error) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `select * from voucherData`
-	rows, _ := DbConnection.Query(cmd)
+	rows, _ := models.DbConnection.Query(cmd)
 	defer rows.Close()
 	var vouchers []VoucherData
 	for rows.Next() {
@@ -572,16 +551,13 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 		fmt.Println(err)
 	}
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
-
 	var name string
 	var prodUrl string
 	var postageJapan float64
 	var weight float64
 	var pMst ProductMst
 	cmd := `select * from productMst where productMstId = ?`
-	row := DbConnection.QueryRow(cmd, pData.ProductMstId)
+	row := models.DbConnection.QueryRow(cmd, pData.ProductMstId)
 	err = row.Scan(&pMst.ProductMstId, &pMst.Name, &pMst.Weight, &pMst.Price, &pMst.ProdUrl, &pMst.PostageJapan, &pMst.DeleteFlag)
 	if err != nil {
 		fmt.Printf("error is = %v", err)
@@ -651,8 +627,6 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 }
 
 func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	voucherDataId := r.FormValue("voucherDataId")
 	productDataId, _ := strconv.Atoi(r.FormValue("productDataId"))
@@ -668,7 +642,7 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 		set productMstId = ?, count = ?, weight = ?, price = ?, 
 		postageChina = ?, grossProfitMargin = ?
 		where productDataId = ?`
-		_, err := DbConnection.Exec(cmd,
+		_, err := models.DbConnection.Exec(cmd,
 			productMstId, count, weight, price,
 			postageChina, grossProfitMargin,
 			productDataId)
@@ -677,13 +651,13 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		cmd = `update productDetailData set grossProfitMargin = ? where productDataId = ?`
-		_, err = DbConnection.Exec(cmd, grossProfitMargin, productDataId)
+		_, err = models.DbConnection.Exec(cmd, grossProfitMargin, productDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
 		cmd := `insert into productData (productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId) values (?, ?, ?, ?, ?, ?, ?)`
-		res, err := DbConnection.Exec(cmd, productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId)
+		res, err := models.DbConnection.Exec(cmd, productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -694,7 +668,7 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 			// 詳細データ
 			for i := 0; i < count; i++ {
 				cmd := `insert into productDetailData (productDataId, grossProfitMargin) values (?, ?)`
-				_, err := DbConnection.Exec(cmd, lastId, grossProfitMargin)
+				_, err := models.DbConnection.Exec(cmd, lastId, grossProfitMargin)
 				if err != nil {
 					log.Fatalln(err)
 				}
@@ -705,21 +679,19 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func productDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	voucherDataId := r.FormValue("voucherDataId")
 	productDataId := r.FormValue("productDataId")
 	_productDataId, _ := strconv.Atoi(productDataId)
 	if _productDataId > 0 {
 		cmd := `delete from productData where productDataId = ?`
-		_, err := DbConnection.Exec(cmd, _productDataId)
+		_, err := models.DbConnection.Exec(cmd, _productDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 
 		cmd = `delete from productDetailData where productDataId = ?`
-		_, err = DbConnection.Exec(cmd, _productDataId)
+		_, err = models.DbConnection.Exec(cmd, _productDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -779,10 +751,8 @@ func productDetailDataUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	productDataId := r.FormValue("productDataId")
 	grossProfitMargin := r.FormValue("grossProfitMargin")
 
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 	cmd := `update productDetailData set grossProfitMargin = ? where productDetailDataId = ?`
-	_, err := DbConnection.Exec(cmd, grossProfitMargin, productDetailDataId)
+	_, err := models.DbConnection.Exec(cmd, grossProfitMargin, productDetailDataId)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -816,10 +786,9 @@ func productDetailSalesDateUpdateHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `select * from productDetailData`
-	rows, _ := DbConnection.Query(cmd)
+	rows, _ := models.DbConnection.Query(cmd)
 	defer rows.Close()
 	var pDetials []ProductDetailData
 	for rows.Next() {
@@ -968,11 +937,9 @@ func getSellingPrice(pDetail ProductDetailData, pData ProductData, pMst ProductM
 }
 
 func getProductDetailDataByProductDataId(productDataId int) []ProductDetailData {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	cmd := `select * from productDetailData where productDataId = ?`
-	rows, _ := DbConnection.Query(cmd, productDataId)
+	rows, _ := models.DbConnection.Query(cmd, productDataId)
 	defer rows.Close()
 	var details []ProductDetailData
 	for rows.Next() {
@@ -1000,10 +967,9 @@ func updateGrossProfitMarginHandler(w http.ResponseWriter, r *http.Request) {
 	grossProfitMargin := r.FormValue("grossProfitMargin")
 	_grossProfitMargin, _ := strconv.Atoi(grossProfitMargin)
 	if _grossProfitMargin > 0 {
-		DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-		defer DbConnection.Close()
+
 		cmd := `update configData set grossProfitMargin = ? where dataId = ?`
-		_, err := DbConnection.Exec(cmd, _grossProfitMargin, 1)
+		_, err := models.DbConnection.Exec(cmd, _grossProfitMargin, 1)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -1013,10 +979,9 @@ func updateGrossProfitMarginHandler(w http.ResponseWriter, r *http.Request) {
 
 func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 	currency := r.FormValue("currency")
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `update configData set currency = ? where dataId = ?`
-	_, err := DbConnection.Exec(cmd, currency, 1)
+	_, err := models.DbConnection.Exec(cmd, currency, 1)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -1024,10 +989,9 @@ func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadProductDatas() ([]ProductData, error) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `select * from productData`
-	rows, _ := DbConnection.Query(cmd)
+	rows, _ := models.DbConnection.Query(cmd)
 	defer rows.Close()
 	var products []ProductData
 	for rows.Next() {
@@ -1066,10 +1030,9 @@ func loadProductDetailDatas() []ProductDetailData {
 }
 
 func loadProductMsts() ([]ProductMst, error) {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
+
 	cmd := `select * from productMst`
-	rows, _ := DbConnection.Query(cmd)
+	rows, _ := models.DbConnection.Query(cmd)
 	defer rows.Close()
 	var products []ProductMst
 	for rows.Next() {
@@ -1085,12 +1048,10 @@ func loadProductMsts() ([]ProductMst, error) {
 }
 
 func getConfigData() ConfigData {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	var configData ConfigData
 	cmd := `select * from configData where dataId = ?`
-	row := DbConnection.QueryRow(cmd, 1)
+	row := models.DbConnection.QueryRow(cmd, 1)
 	err := row.Scan(&configData.DataId, &configData.GrossProfitMargin, &configData.Currency)
 	if err != nil {
 		log.Fatalln(err)
@@ -1099,12 +1060,10 @@ func getConfigData() ConfigData {
 }
 
 func getProductMstById(productMstId int) ProductMst {
-	DbConnection, _ := sql.Open("sqlite3", "./sellManagement.sql")
-	defer DbConnection.Close()
 
 	var productMst ProductMst
 	cmd := `select * from productMst where productMstId = ?`
-	row := DbConnection.QueryRow(cmd, productMstId)
+	row := models.DbConnection.QueryRow(cmd, productMstId)
 	err := row.Scan(
 		&productMst.ProductMstId, &productMst.Name, &productMst.Weight,
 		&productMst.Price, &productMst.ProdUrl, &productMst.PostageJapan,
