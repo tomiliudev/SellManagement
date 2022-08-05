@@ -56,17 +56,6 @@ type VoucherData2 struct {
 	DeleteFlag         bool
 }
 
-type ProductData struct {
-	ProductDataId     int     `db:"productDataId"`
-	ProductMstId      int     `db:"productMstId"`
-	Count             int     `db:"count"`
-	Weight            float64 `db:"weight"`
-	Price             float64 `db:"price"`
-	PostageChina      float64 `db:"postageChina"`
-	GrossProfitMargin float64 `db:"grossProfitMargin"`
-	VoucherDataId     int     `db:"voucherDataId"`
-}
-
 // 表示用
 type ProductData2 struct {
 	ProductDataId     int
@@ -396,11 +385,11 @@ func voucherDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 // 伝票データ削除
 func voucherDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	voucherDataId, _ := strconv.Atoi(r.FormValue("voucherDataId"))
-	productDatas, _ := loadProductDatas()
+	productDatas := models.GetAllProductData()
 	pData := linq.From(productDatas).Where(func(i interface{}) bool {
-		return i.(ProductData).VoucherDataId == voucherDataId
+		return i.(models.ProductData).VoucherDataId == voucherDataId
 	}).Select(func(i interface{}) interface{} {
-		return i.(ProductData)
+		return i.(models.ProductData)
 	})
 	var hasProductData bool
 	if pData.Count() > 0 {
@@ -457,9 +446,9 @@ func productDataEditHandler(w http.ResponseWriter, r *http.Request) {
 
 	var pData ProductData2
 	var pDataList []ProductData2
-	productDataList, _ := loadProductDatas()
+	productDataList := models.GetAllProductData()
 
-	linq.From(productDataList).WhereT(func(p ProductData) bool {
+	linq.From(productDataList).WhereT(func(p models.ProductData) bool {
 		return p.VoucherDataId == voucherDataId
 	}).ToSlice(&productDataList)
 
@@ -507,7 +496,7 @@ func getVoucherData2ById(voucherDataId int) VoucherData2 {
 }
 
 func (p *ProductData2) UnmarshalJSON(b []byte) error {
-	var pData ProductData
+	var pData models.ProductData
 	err := json.Unmarshal(b, &pData)
 	if err != nil {
 		fmt.Println(err)
@@ -574,44 +563,26 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 }
 
 func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
-
-	voucherDataId := r.FormValue("voucherDataId")
+	voucherDataId, _ := strconv.Atoi(r.FormValue("voucherDataId"))
 	productDataId, _ := strconv.Atoi(r.FormValue("productDataId"))
-	productMstId := r.FormValue("productMstId")
+	productMstId, _ := strconv.Atoi(r.FormValue("productMstId"))
 	count, _ := strconv.Atoi(r.FormValue("count"))
-	weight := r.FormValue("weight")
-	price := r.FormValue("price")
-	postageChina := r.FormValue("postageChina")
-	grossProfitMargin := r.FormValue("grossProfitMargin")
+	weight, _ := strconv.ParseFloat(r.FormValue("weight"), 64)
+	price, _ := strconv.ParseFloat(r.FormValue("price"), 64)
+	postageChina, _ := strconv.ParseFloat(r.FormValue("postageChina"), 64)
+	grossProfitMargin, _ := strconv.ParseFloat(r.FormValue("grossProfitMargin"), 64)
 
 	if productDataId > 0 {
-		cmd := `update productData 
-		set productMstId = ?, count = ?, weight = ?, price = ?, 
-		postageChina = ?, grossProfitMargin = ?
-		where productDataId = ?`
-		_, err := models.DbConnection.Exec(cmd,
-			productMstId, count, weight, price,
-			postageChina, grossProfitMargin,
-			productDataId)
-		if err != nil {
-			log.Fatalln(err)
-		}
+		models.UpdateProductDataById(productDataId, productMstId, count, weight, price, postageChina, grossProfitMargin)
 
-		cmd = `update productDetailData set grossProfitMargin = ? where productDataId = ?`
-		_, err = models.DbConnection.Exec(cmd, grossProfitMargin, productDataId)
+		cmd := `update productDetailData set grossProfitMargin = ? where productDataId = ?`
+		_, err := models.DbConnection.Exec(cmd, grossProfitMargin, productDataId)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
-		cmd := `insert into productData (productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId) values (?, ?, ?, ?, ?, ?, ?)`
-		res, err := models.DbConnection.Exec(cmd, productMstId, count, weight, price, postageChina, grossProfitMargin, voucherDataId)
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		if lastId, err := res.LastInsertId(); err != nil {
-			log.Fatalln(err)
-		} else {
+		lastId := models.InsertProductData(productMstId, voucherDataId, count, weight, price, postageChina, grossProfitMargin)
+		if lastId > 0 {
 			// 詳細データ
 			for i := 0; i < count; i++ {
 				cmd := `insert into productDetailData (productDataId, grossProfitMargin) values (?, ?)`
@@ -622,7 +593,7 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	http.Redirect(w, r, "/product_data_edit/?voucherDataId="+voucherDataId, http.StatusFound)
+	http.Redirect(w, r, fmt.Sprintf("/product_data_edit/?voucherDataId=%d", voucherDataId), http.StatusFound)
 }
 
 func productDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -650,10 +621,10 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	productDataId, _ := strconv.Atoi(r.FormValue("productDataId"))
 
 	// productDataの取得
-	productDataList, _ := loadProductDatas()
+	productDataList := models.GetAllProductData()
 	productData := linq.From(productDataList).FirstWith(func(i interface{}) bool {
-		return i.(ProductData).ProductDataId == productDataId
-	}).(ProductData)
+		return i.(models.ProductData).ProductDataId == productDataId
+	}).(models.ProductData)
 
 	// productMstの取得
 	productMst := models.GetProductMstById(productData.ProductMstId)
@@ -678,7 +649,7 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, data)
 }
 
-func convertToProductDetailData2(detail ProductDetailData, productData ProductData, productMst models.ProductMst) ProductDetailData2 {
+func convertToProductDetailData2(detail ProductDetailData, productData models.ProductData, productMst models.ProductMst) ProductDetailData2 {
 	detail2 := ProductDetailData2{
 		ProductDetailDataId: detail.ProductDetailDataId,
 		ProductDataId:       detail.ProductDataId,
@@ -755,11 +726,11 @@ func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
 	}).Distinct().ToSlice(&productDataIds)
 
 	// 対象のproductDataList取得
-	productDataList := getProductDataListByIds(productDataIds)
+	productDataList := models.GetProductDataListByIds(productDataIds)
 
 	var productMstIds []int
 	linq.From(productDataList).Select(func(i interface{}) interface{} {
-		return i.(ProductData).ProductMstId
+		return i.(models.ProductData).ProductMstId
 	}).Distinct().ToSlice(&productMstIds)
 
 	// 対象のproductMstList取得
@@ -767,7 +738,7 @@ func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
 
 	var details2 []ProductDetailData2
 	for _, detail := range pDetials {
-		pData := linq.From(productDataList).FirstWith(func(i interface{}) bool { return i.(ProductData).ProductDataId == detail.ProductDataId }).(ProductData)
+		pData := linq.From(productDataList).FirstWith(func(i interface{}) bool { return i.(models.ProductData).ProductDataId == detail.ProductDataId }).(models.ProductData)
 		pMst := linq.From(productMstList).FirstWith(func(i interface{}) bool { return i.(models.ProductMst).ProductMstId == pData.ProductMstId }).(models.ProductMst)
 		detail2 := convertToProductDetailData2(detail, pData, pMst)
 		details2 = append(details2, detail2)
@@ -784,10 +755,7 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 	productMstList := models.GetAllProductMst()
 
 	// productDataList取得
-	productDataList, err := loadProductDatas()
-	if err != nil {
-		log.Fatalln(err)
-	}
+	productDataList := models.GetAllProductData()
 
 	productDetailDataList := loadProductDetailDatas()
 
@@ -796,8 +764,8 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 		purchaseCount := 0
 		stockCount := 0
 		soldCount := 0
-		var pDatas []ProductData
-		linq.From(productDataList).Where(func(i interface{}) bool { return i.(ProductData).ProductMstId == pMst.ProductMstId }).ToSlice(&pDatas)
+		var pDatas []models.ProductData
+		linq.From(productDataList).Where(func(i interface{}) bool { return i.(models.ProductData).ProductMstId == pMst.ProductMstId }).ToSlice(&pDatas)
 		for _, pData := range pDatas {
 			pDetailDataQuery := linq.From(productDetailDataList).Where(func(i interface{}) bool { return i.(ProductDetailData).ProductDataId == pData.ProductDataId })
 			purchaseCount += pDetailDataQuery.Count()
@@ -823,7 +791,7 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // 販売価格の計算
-func getSellingPrice(pDetail ProductDetailData, pData ProductData, pMst models.ProductMst) float64 {
+func getSellingPrice(pDetail ProductDetailData, pData models.ProductData, pMst models.ProductMst) float64 {
 	// configData取得
 	configData := getConfigData()
 
@@ -932,26 +900,6 @@ func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/config_edit/", http.StatusFound)
 }
 
-func loadProductDatas() ([]ProductData, error) {
-
-	cmd := `select * from productData`
-	rows, _ := models.DbConnection.Query(cmd)
-	defer rows.Close()
-	var products []ProductData
-	for rows.Next() {
-		var p ProductData
-		if err := rows.Scan(&p.ProductDataId, &p.ProductMstId, &p.Count, &p.Weight, &p.Price, &p.PostageChina, &p.GrossProfitMargin, &p.VoucherDataId); err != nil {
-			log.Fatalln(err)
-		}
-		products = append(products, p)
-	}
-	err := rows.Err()
-	if err != nil {
-		return nil, err
-	}
-	return products, nil
-}
-
 func loadProductDetailDatas() []ProductDetailData {
 	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
 	defer db.Close()
@@ -983,30 +931,4 @@ func getConfigData() ConfigData {
 		log.Fatalln(err)
 	}
 	return configData
-}
-
-func getProductDataListByIds(ids []int) []ProductData {
-	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
-	defer db.Close()
-
-	query, args, err := sqlx.In(`select * from productData where productDataId in (?)`, ids)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	query = db.Rebind(query)
-	rows, err := db.Queryx(query, args...)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer rows.Close()
-
-	var pDatas []ProductData
-	for rows.Next() {
-		var p ProductData
-		if err := rows.StructScan(&p); err != nil {
-			log.Fatalln(err)
-		}
-		pDatas = append(pDatas, p)
-	}
-	return pDatas
 }
