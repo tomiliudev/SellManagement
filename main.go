@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ahmetalpbalkan/go-linq"
-	"github.com/jmoiron/sqlx"
 	"github.com/leekchan/timeutil"
 	"gopkg.in/ini.v1"
 )
@@ -70,14 +69,6 @@ type ProductData2 struct {
 	ProdUrl           string
 	VoucherDataId     int
 	ProdMstDeleteFlag bool
-}
-
-type ProductDetailData struct {
-	ProductDetailDataId int     `db:"productDetailDataId"`
-	ProductDataId       int     `db:"productDataId"`
-	GrossProfitMargin   float64 `db:"grossProfitMargin"`
-	PurchaseDate        string  `db:"purchaseDate"`
-	SalesDate           string  `db:"salesDate"`
 }
 
 type ProductDetailData2 struct {
@@ -572,24 +563,19 @@ func productDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 	postageChina, _ := strconv.ParseFloat(r.FormValue("postageChina"), 64)
 	grossProfitMargin, _ := strconv.ParseFloat(r.FormValue("grossProfitMargin"), 64)
 
+	if grossProfitMargin <= 0 {
+		grossProfitMargin = getConfigData().GrossProfitMargin
+	}
+
 	if productDataId > 0 {
 		models.UpdateProductDataById(productDataId, productMstId, count, weight, price, postageChina, grossProfitMargin)
-
-		cmd := `update productDetailData set grossProfitMargin = ? where productDataId = ?`
-		_, err := models.DbConnection.Exec(cmd, grossProfitMargin, productDataId)
-		if err != nil {
-			log.Fatalln(err)
-		}
+		models.UpdateGrossProfitMarginByProductDataId(productDataId, grossProfitMargin)
 	} else {
 		lastId := models.InsertProductData(productMstId, voucherDataId, count, weight, price, postageChina, grossProfitMargin)
 		if lastId > 0 {
 			// 詳細データ
 			for i := 0; i < count; i++ {
-				cmd := `insert into productDetailData (productDataId, grossProfitMargin) values (?, ?)`
-				_, err := models.DbConnection.Exec(cmd, lastId, grossProfitMargin)
-				if err != nil {
-					log.Fatalln(err)
-				}
+				models.InsertProductDetailData(lastId, grossProfitMargin)
 			}
 		}
 	}
@@ -630,7 +616,7 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	productMst := models.GetProductMstById(productData.ProductMstId)
 
 	// productDetailDataの取得
-	details := getProductDetailDataByProductDataId(productDataId)
+	details := models.GetProductDetailDataByProductDataId(productDataId)
 
 	var details2 []ProductDetailData2
 	for _, detail := range details {
@@ -649,7 +635,7 @@ func productDetailDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, data)
 }
 
-func convertToProductDetailData2(detail ProductDetailData, productData models.ProductData, productMst models.ProductMst) ProductDetailData2 {
+func convertToProductDetailData2(detail models.ProductDetailData, productData models.ProductData, productMst models.ProductMst) ProductDetailData2 {
 	detail2 := ProductDetailData2{
 		ProductDetailDataId: detail.ProductDetailDataId,
 		ProductDataId:       detail.ProductDataId,
@@ -667,19 +653,18 @@ func convertToProductDetailData2(detail ProductDetailData, productData models.Pr
 func productDetailDataUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	productDetailDataId, _ := strconv.Atoi(r.FormValue("productDetailDataId"))
 	productDataId := r.FormValue("productDataId")
-	grossProfitMargin := r.FormValue("grossProfitMargin")
+	grossProfitMargin, _ := strconv.ParseFloat(r.FormValue("grossProfitMargin"), 64)
 
-	cmd := `update productDetailData set grossProfitMargin = ? where productDetailDataId = ?`
-	_, err := models.DbConnection.Exec(cmd, grossProfitMargin, productDetailDataId)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	models.UpdateGrossProfitMarginById(productDetailDataId, grossProfitMargin)
 	http.Redirect(w, r, "/product_detail_data_edit/?productDataId="+productDataId, http.StatusFound)
 }
 
 func productDetailSalesDateUpdateHandler(w http.ResponseWriter, r *http.Request) {
-	productDetailDataIdList := r.FormValue("productDetailDataIdList")
-	productDetailDataIds := strings.Split(productDetailDataIdList, ",")
+	var productDetailDataIds []int
+	linq.From(strings.Split(r.FormValue("productDetailDataIdList"), ",")).Select(func(i interface{}) interface{} {
+		id, _ := strconv.Atoi(i.(string))
+		return id
+	}).ToSlice(&productDetailDataIds)
 
 	flag := r.FormValue("flag")
 
@@ -689,40 +674,16 @@ func productDetailSalesDateUpdateHandler(w http.ResponseWriter, r *http.Request)
 		_now = timeutil.Strftime(&now, "%Y-%m-%d %H:%M:%S")
 	}
 
-	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
-	defer db.Close()
-	cmd := `update productDetailData set salesDate = ? where productDetailDataId in (?)`
-	query, args, err := sqlx.In(cmd, _now, productDetailDataIds)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	_, err = db.Exec(query, args...)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	models.UpdateSalesDateInIds(_now, productDetailDataIds)
 	http.Redirect(w, r, "/product_selling_edit/", http.StatusFound)
 }
 
 func productSellingEditHandler(w http.ResponseWriter, r *http.Request) {
-
-	cmd := `select * from productDetailData`
-	rows, _ := models.DbConnection.Query(cmd)
-	defer rows.Close()
-	var pDetials []ProductDetailData
-	for rows.Next() {
-		var p ProductDetailData
-		rows.Scan(&p.ProductDetailDataId, &p.ProductDataId, &p.GrossProfitMargin,
-			&p.PurchaseDate, &p.SalesDate)
-		pDetials = append(pDetials, p)
-	}
-	err := rows.Err()
-	if err != nil {
-		log.Fatalln(err)
-	}
+	pDetials := models.GetAllProductDetailData()
 
 	var productDataIds []int
 	linq.From(pDetials).Select(func(i interface{}) interface{} {
-		return i.(ProductDetailData).ProductDataId
+		return i.(models.ProductDetailData).ProductDataId
 	}).Distinct().ToSlice(&productDataIds)
 
 	// 対象のproductDataList取得
@@ -756,8 +717,7 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 
 	// productDataList取得
 	productDataList := models.GetAllProductData()
-
-	productDetailDataList := loadProductDetailDatas()
+	productDetailDataList := models.GetAllProductDetailData()
 
 	var inventoryList []InventoryData
 	for _, pMst := range productMstList {
@@ -767,10 +727,10 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 		var pDatas []models.ProductData
 		linq.From(productDataList).Where(func(i interface{}) bool { return i.(models.ProductData).ProductMstId == pMst.ProductMstId }).ToSlice(&pDatas)
 		for _, pData := range pDatas {
-			pDetailDataQuery := linq.From(productDetailDataList).Where(func(i interface{}) bool { return i.(ProductDetailData).ProductDataId == pData.ProductDataId })
+			pDetailDataQuery := linq.From(productDetailDataList).Where(func(i interface{}) bool { return i.(models.ProductDetailData).ProductDataId == pData.ProductDataId })
 			purchaseCount += pDetailDataQuery.Count()
-			stockCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(ProductDetailData).SalesDate == "0" }).Count()
-			soldCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(ProductDetailData).SalesDate != "0" }).Count()
+			stockCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(models.ProductDetailData).SalesDate == "0" }).Count()
+			soldCount += pDetailDataQuery.Where(func(i interface{}) bool { return i.(models.ProductDetailData).SalesDate != "0" }).Count()
 		}
 
 		inventory := InventoryData{
@@ -791,7 +751,7 @@ func inventoryListViewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // 販売価格の計算
-func getSellingPrice(pDetail ProductDetailData, pData models.ProductData, pMst models.ProductMst) float64 {
+func getSellingPrice(pDetail models.ProductDetailData, pData models.ProductData, pMst models.ProductMst) float64 {
 	// configData取得
 	configData := getConfigData()
 
@@ -848,26 +808,6 @@ func getSellingPrice(pDetail ProductDetailData, pData models.ProductData, pMst m
 	return sellingPrice
 }
 
-func getProductDetailDataByProductDataId(productDataId int) []ProductDetailData {
-
-	cmd := `select * from productDetailData where productDataId = ?`
-	rows, _ := models.DbConnection.Query(cmd, productDataId)
-	defer rows.Close()
-	var details []ProductDetailData
-	for rows.Next() {
-		var d ProductDetailData
-		if err := rows.Scan(&d.ProductDetailDataId, &d.ProductDataId, &d.GrossProfitMargin, &d.PurchaseDate, &d.SalesDate); err != nil {
-			log.Fatalln(err)
-		}
-		details = append(details, d)
-	}
-	err := rows.Err()
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return details
-}
-
 func configEditHandler(w http.ResponseWriter, r *http.Request) {
 	data := make(map[string]interface{})
 	data["configData"] = getConfigData()
@@ -898,27 +838,6 @@ func updateCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatalln(err)
 	}
 	http.Redirect(w, r, "/config_edit/", http.StatusFound)
-}
-
-func loadProductDetailDatas() []ProductDetailData {
-	db, _ := sqlx.Open("sqlite3", "./sellManagement.sql")
-	defer db.Close()
-	cmd := `select * from productDetailData`
-	rows, _ := db.Queryx(cmd)
-	defer rows.Close()
-	var details []ProductDetailData
-	for rows.Next() {
-		var p ProductDetailData
-		if err := rows.StructScan(&p); err != nil {
-			log.Fatalln(err)
-		}
-		details = append(details, p)
-	}
-	err := rows.Err()
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return details
 }
 
 func getConfigData() ConfigData {
