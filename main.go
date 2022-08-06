@@ -26,19 +26,6 @@ type ConfigList struct {
 
 var Config ConfigList
 
-type VoucherData struct {
-	VoucherDataId  int
-	OrderId        string
-	OrderTime      string
-	ShippingMode   int
-	ShippingMethod int
-	DeliveryId     string
-	Weight         float64
-	Cost           float64
-	Status         int
-	DeleteFlag     bool
-}
-
 type VoucherData2 struct {
 	VoucherDataId      int
 	OrderId            string
@@ -280,8 +267,8 @@ func productMstRevivalHandler(w http.ResponseWriter, r *http.Request) {
 
 // 伝票入力
 func voucherDataEditHandler(w http.ResponseWriter, r *http.Request) {
-	voucherDataList, _ := loadVoucherDatas()
-
+	voucherDataList := models.GetAllVoucherData()
+	fmt.Println(voucherDataList)
 	var vDataList []VoucherData2
 	for _, v := range voucherDataList {
 		var vData VoucherData2
@@ -306,7 +293,7 @@ func voucherDataEditHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (v *VoucherData2) UnmarshalJSON(b []byte) error {
-	var vData VoucherData
+	var vData models.VoucherData
 	err := json.Unmarshal(b, &vData)
 	if err != nil {
 		log.Fatalln(err)
@@ -331,16 +318,15 @@ func (v *VoucherData2) UnmarshalJSON(b []byte) error {
 
 // 伝票入力
 func voucherDataSaveHandler(w http.ResponseWriter, r *http.Request) {
-	voucherDataId := r.FormValue("voucherDataId")
+	voucherDataId, _ := strconv.Atoi(r.FormValue("voucherDataId"))
 	orderId := r.FormValue("orderId")
 	orderTime := r.FormValue("orderTime")
-	shippingMode := r.FormValue("shippingMode")
-	shippingMethod := r.FormValue("shippingMethod")
+	shippingMode, _ := strconv.Atoi(r.FormValue("shippingMode"))
+	shippingMethod, _ := strconv.Atoi(r.FormValue("shippingMethod"))
 	deliveryId := r.FormValue("deliveryId")
-	weight := r.FormValue("weight")
-	cost := r.FormValue("cost")
-	status := r.FormValue("status")
-	_voucherDataId, _ := strconv.Atoi(voucherDataId)
+	weight, _ := strconv.ParseFloat(r.FormValue("weight"), 64)
+	cost, _ := strconv.ParseFloat(r.FormValue("cost"), 64)
+	status, _ := strconv.Atoi(r.FormValue("status"))
 
 	if len(orderId) <= 0 {
 		orderId = "-"
@@ -354,21 +340,10 @@ func voucherDataSaveHandler(w http.ResponseWriter, r *http.Request) {
 		deliveryId = "-"
 	}
 
-	if _voucherDataId > 0 {
-		cmd := `update voucherData 
-		set orderId = ?, orderTime = ?, shippingMode = ?, shippingMethod = ?, 
-		deliveryId = ?, weight = ?, cost = ?, status = ?
-		where voucherDataId = ?`
-		_, err := models.DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, voucherDataId)
-		if err != nil {
-			log.Fatalln(err)
-		}
+	if voucherDataId > 0 {
+		models.UpdateVoucherData(voucherDataId, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status)
 	} else {
-		cmd := `insert into voucherData (orderId,orderTime,shippingMode,shippingMethod,deliveryId,weight,cost,status,deleteFlag) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err := models.DbConnection.Exec(cmd, orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status, false)
-		if err != nil {
-			log.Fatalln(err)
-		}
+		models.InsertVoucherData(orderId, orderTime, shippingMode, shippingMethod, deliveryId, weight, cost, status)
 	}
 	http.Redirect(w, r, "/voucher_data_edit/", http.StatusFound)
 }
@@ -388,7 +363,7 @@ func voucherDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		hasProductData = false
 
-		deleteVoucherDataById(voucherDataId)
+		models.DeleteVoucherDataById(voucherDataId)
 		http.Redirect(w, r, "/voucher_data_edit/", http.StatusFound)
 	}
 	jsonData := fmt.Sprintf(`{"hasProductData":%t}`, hasProductData)
@@ -399,34 +374,8 @@ func voucherDataDeleteHandler(w http.ResponseWriter, r *http.Request) {
 // 伝票データの強制削除
 func voucherDataForceDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	voucherDataId, _ := strconv.Atoi(r.FormValue("voucherDataId"))
-	deleteVoucherDataById(voucherDataId)
+	models.DeleteVoucherDataById(voucherDataId)
 	http.Redirect(w, r, "/voucher_data_edit/", http.StatusFound)
-}
-
-func deleteVoucherDataById(voucherDataId int) {
-
-	cmd := `update voucherData set deleteFlag = true where voucherDataId = ?`
-	models.DbConnection.Exec(cmd, voucherDataId)
-}
-
-func loadVoucherDatas() ([]VoucherData, error) {
-
-	cmd := `select * from voucherData`
-	rows, _ := models.DbConnection.Query(cmd)
-	defer rows.Close()
-	var vouchers []VoucherData
-	for rows.Next() {
-		var v VoucherData
-		rows.Scan(&v.VoucherDataId, &v.OrderId, &v.OrderTime,
-			&v.ShippingMode, &v.ShippingMethod, &v.DeliveryId,
-			&v.Weight, &v.Cost, &v.Status, &v.DeleteFlag)
-		vouchers = append(vouchers, v)
-	}
-	err := rows.Err()
-	if err != nil {
-		return nil, err
-	}
-	return vouchers, nil
 }
 
 func productDataEditHandler(w http.ResponseWriter, r *http.Request) {
@@ -464,16 +413,8 @@ func productDataEditHandler(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, data)
 }
 
-func getVoucherDataById(voucherDataId int) VoucherData {
-	voucherDataList, _ := loadVoucherDatas()
-	voucherData := linq.From(voucherDataList).FirstWith(func(i interface{}) bool {
-		return i.(VoucherData).VoucherDataId == voucherDataId
-	})
-	return voucherData.(VoucherData)
-}
-
 func getVoucherData2ById(voucherDataId int) VoucherData2 {
-	voucherData := getVoucherDataById(voucherDataId)
+	voucherData := models.GetVoucherDataById(voucherDataId)
 	voucherDataByte, err := json.Marshal(voucherData)
 	if err != nil {
 		log.Fatalln(err)
@@ -531,7 +472,7 @@ func (p *ProductData2) UnmarshalJSON(b []byte) error {
 	// 中国送料（元）
 	var postageChina = pData.PostageChina / float64(pData.Count)
 
-	voucherData := getVoucherDataById(pData.VoucherDataId)
+	voucherData := models.GetVoucherDataById(pData.VoucherDataId)
 
 	// 国際送料
 	postageInternational := 0.0
@@ -781,7 +722,7 @@ func getSellingPrice(pDetail models.ProductDetailData, pData models.ProductData,
 	// 日本送料（円）
 	postageJapan := pMst.PostageJapan
 
-	voucherData := getVoucherDataById(pData.VoucherDataId)
+	voucherData := models.GetVoucherDataById(pData.VoucherDataId)
 
 	// 国際送料
 	postageInternational := 0.0
